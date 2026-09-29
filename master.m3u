@@ -1,0 +1,2 @@
+#EXTM3U x-tvg-url="epg.xml"
+# MasterTV V2 bootstrap. Run update_master.py or GitHub Action to populate current public channels and EPG.

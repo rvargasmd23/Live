@@ -1,0 +1,6 @@
+{
+  "status": "bootstrap",
+  "version": "2.0 Full Expanded",
+  "group_count": 89,
+  "note": "Run the updater or included GitHub Action to populate current public streams and EPG metadata."
+}
