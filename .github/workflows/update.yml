@@ -6,7 +6,7 @@ on:
     - cron: '17 5 * * *'
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -26,24 +26,41 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Build MasterTV
-        run: python update_master.py --real-epg --max-epg-sources 120
-
-      - name: Prepare GitHub Pages site
+      - name: Generate fresh MasterTV channels and EPG
         run: |
-          mkdir -p site
+          python update_master.py --real-epg --max-epg-sources 120
+
+      - name: Verify generated data
+        run: |
+          echo "Generated files:"
+          ls -lh output
+          echo "Channel count:"
+          python - <<'PY'
+          import json
+          with open("output/channels.json", encoding="utf-8") as f:
+              channels = json.load(f)
+          print(len(channels))
+          if len(channels) == 0:
+              raise SystemExit("ERROR: No channels generated")
+          PY
+
+      - name: Prepare MasterTV website
+        run: |
+          mkdir -p site/output
+
           cp index.html site/
           cp app.js site/
           cp styles.css site/
           cp manifest.webmanifest site/
           cp sw.js site/
-          cp master.m3u site/
-          cp epg.xml site/
-          cp channels.json site/
-          cp groups.json site/
-          cp group_sections.json site/
-          cp epg_index.json site/
-          cp stats.json site/
+
+          cp output/channels.json site/output/
+          cp output/groups.json site/output/
+          cp output/group_sections.json site/output/
+          cp output/epg_index.json site/output/
+          cp output/epg.xml site/output/
+          cp output/master.m3u site/output/
+          cp output/stats.json site/output/
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -63,6 +80,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy MasterTV
         id: deployment
         uses: actions/deploy-pages@v4
