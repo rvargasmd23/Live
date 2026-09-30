@@ -1,89 +1,71 @@
 const $=s=>document.querySelector(s);
-let channels=[], groups=[], sections=[], epg={}, activeGroup=null, current=null, hls=null;
-let virtualMode=null;
+let channels=[], groups=[], sections=[], epg={}, vod=[], sources=[], stats={};
+let activeGroup=null, virtualMode='🏠 HOME', current=null, hls=null, renderLimit=60, sourceFilter='all';
+const PAGE_SIZE=60, RECENT_LIMIT=50;
 const favs=new Set(JSON.parse(localStorage.getItem('mastertv:favs')||'[]'));
 let recent=JSON.parse(localStorage.getItem('mastertv:recent')||'[]');
-const RECENT_LIMIT=50;
 const ua=navigator.userAgent.toLowerCase();
 if(ua.includes('tesla')) $('#teslaNotice').classList.remove('hidden');
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=5').catch(()=>{});
 
+const VOD_GROUPS=new Set(['💎 PREMIUM LIVE CHANNELS','🏀 NBA LEAGUE PASS','⚾ MLB.TV','🏈 NFL+','🏎 F1 TV','📡 ESPN','🟢 FREE SPORTS FAST','🎬 FREE MOVIES FAST','📺 FREE SERIES FAST','🎬 ON DEMAND MOVIES','📺 ON DEMAND SERIES','🆕 NEW RELEASES EN','🆕 ESTRENOS ESPAÑOL']);
+const VIRTUAL=new Set(['🏠 HOME','⭐ FAVORITES','🕘 RECENTLY WATCHED']);
+function isVodGroup(g){return VOD_GROUPS.has(g)}
+function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function fmtTime(iso){if(!iso)return'';try{return new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'}).format(new Date(iso))}catch{return''}}
 function saveFavs(){localStorage.setItem('mastertv:favs',JSON.stringify([...favs]))}
 function saveRecent(){recent=recent.slice(0,RECENT_LIMIT);localStorage.setItem('mastertv:recent',JSON.stringify(recent))}
 function addRecent(id){recent=[id,...recent.filter(x=>x!==id)];saveRecent()}
 function toggleFav(id){favs.has(id)?favs.delete(id):favs.add(id);saveFavs();render();syncNowFav()}
-function syncNowFav(){if(!current)return;$('#nowFav').textContent=(favs.has(current.tvg_id)?'★':'☆')+' Favorite'}
-function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function fmtTime(iso){if(!iso)return'';try{return new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'}).format(new Date(iso))}catch{return''}}
-function groupCount(g){return channels.filter(c=>c.groups?.includes(g)).length}
-function virtualCount(g){if(g==='⭐ FAVORITES')return channels.filter(c=>favs.has(c.tvg_id)).length;if(g==='🕘 RECENTLY WATCHED')return recent.filter(id=>channels.some(c=>c.tvg_id===id)).length;return 0}
+function syncNowFav(){if(!current||current.type==='service'||current.type==='vod')return;$('#nowFav').textContent=(favs.has(current.tvg_id)?'★':'☆')+' Favorite'}
+function channelById(id){return channels.find(c=>c.tvg_id===id)}
+function groupCount(g){if(isVodGroup(g))return vod.filter(x=>x.group===g).length;return channels.filter(c=>c.groups?.includes(g)).length}
+function virtualCount(g){if(g==='⭐ FAVORITES')return channels.filter(c=>favs.has(c.tvg_id)).length;if(g==='🕘 RECENTLY WATCHED')return recent.filter(id=>channelById(id)).length;if(g==='🏠 HOME')return channels.length;return groupCount(g)}
 
-function selectGroup(g){activeGroup=null;virtualMode=null;if(g==='⭐ FAVORITES'||g==='🕘 RECENTLY WATCHED')virtualMode=g;else activeGroup=g;render()}
+function selectGroup(g){activeGroup=null;virtualMode=null;renderLimit=PAGE_SIZE;if(VIRTUAL.has(g)||isVodGroup(g))virtualMode=g;else activeGroup=g;render();window.scrollTo({top:0,behavior:'smooth'})}
+function sourceFiltered(arr){return sourceFilter==='all'?arr:arr.filter(c=>c.source_id===sourceFilter)}
 
-function renderGroups(){
-  const el=$('#groups');el.innerHTML='';
-  const all=document.createElement('button');all.className='group '+(!activeGroup&&!virtualMode?'active':'');all.innerHTML=`<span>📺 ALL CHANNELS</span><span class="count">${channels.length}</span>`;all.onclick=()=>selectGroup(null);el.appendChild(all);
-  sections.forEach(sec=>{
-    const h=document.createElement('div');h.className='section-label';h.textContent=sec.title;el.appendChild(h);
-    sec.groups.forEach(g=>{
-      const n=g==='⭐ FAVORITES'||g==='🕘 RECENTLY WATCHED'?virtualCount(g):groupCount(g);
-      const b=document.createElement('button');b.className='group '+((activeGroup===g||virtualMode===g)?'active':'')+(n===0?' empty':'');
-      b.innerHTML=`<span>${esc(g)}</span><span class="count">${n}</span>`;b.onclick=()=>selectGroup(g);el.appendChild(b);
-    });
-  });
-}
+function renderGroups(){const el=$('#groups');el.innerHTML='';sections.forEach(sec=>{const h=document.createElement('div');h.className='section-label';h.textContent=sec.title;el.appendChild(h);sec.groups.forEach(g=>{const n=(VIRTUAL.has(g)||isVodGroup(g))?virtualCount(g):groupCount(g);const b=document.createElement('button');b.className='group '+((activeGroup===g||virtualMode===g)?'active':'')+(n===0?' empty':'');b.innerHTML=`<span>${esc(g)}</span><span class="count">${n===null?'':n}</span>`;b.onclick=()=>selectGroup(g);el.appendChild(b)})})}
 
-function filtered(){
-  const q=$('#search').value.trim().toLowerCase();
-  let arr=channels.filter(c=>{
-    if(virtualMode==='⭐ FAVORITES'&&!favs.has(c.tvg_id))return false;
-    if(activeGroup&&!c.groups?.includes(activeGroup))return false;
-    if(q&&!`${c.name} ${c.country} ${(c.languages||[]).join(' ')} ${(c.groups||[]).join(' ')}`.toLowerCase().includes(q))return false;
-    return true;
-  });
-  if(virtualMode==='🕘 RECENTLY WATCHED'){
-    const map=new Map(channels.map(c=>[c.tvg_id,c]));arr=recent.map(id=>map.get(id)).filter(Boolean);
-    if(q)arr=arr.filter(c=>`${c.name} ${c.country} ${(c.groups||[]).join(' ')}`.toLowerCase().includes(q));
-  }
-  return arr;
-}
+function filtered(){const q=$('#search').value.trim().toLowerCase();if(isVodGroup(virtualMode)){let arr=vod.filter(x=>x.group===virtualMode);if(q)arr=arr.filter(x=>`${x.name} ${x.provider||''} ${x.language||''} ${x.overview||''}`.toLowerCase().includes(q));return arr}
+ let arr=sourceFiltered(channels).filter(c=>{if(virtualMode==='⭐ FAVORITES'&&!favs.has(c.tvg_id))return false;if(activeGroup&&!c.groups?.includes(activeGroup))return false;if(q&&!`${c.name} ${c.country} ${c.source||''} ${(c.languages||[]).join(' ')} ${(c.groups||[]).join(' ')}`.toLowerCase().includes(q))return false;return true});
+ if(virtualMode==='🕘 RECENTLY WATCHED'){const map=new Map(sourceFiltered(channels).map(c=>[c.tvg_id,c]));arr=recent.map(id=>map.get(id)).filter(Boolean);if(q)arr=arr.filter(c=>`${c.name} ${c.country} ${c.source||''} ${(c.groups||[]).join(' ')}`.toLowerCase().includes(q))}
+ return arr}
 
-function miniEPG(c){const e=epg[c.tvg_id]?.now;if(!e)return c.has_guide_metadata?'Guide available':'Guide fallback';return `${fmtTime(e.start)}  ${e.title||''}`.trim()}
-function render(){
-  renderGroups();const arr=filtered();$('#resultCount').textContent=`${arr.length} channels`;$('#viewTitle').textContent=virtualMode||activeGroup||'📺 ALL CHANNELS';
-  const el=$('#grid');el.innerHTML='';const tpl=$('#cardTpl');
-  if(!arr.length){el.innerHTML='<div class="empty-state">No channels in this section yet.</div>';return}
-  for(const c of arr){
-    const node=tpl.content.firstElementChild.cloneNode(true);node.querySelector('.name').textContent=c.name;
-    node.querySelector('.meta').textContent=[c.country,c.quality,(c.languages||[]).join('/')].filter(Boolean).join(' • ');
-    node.querySelector('.epg-mini').textContent=miniEPG(c);
-    const im=node.querySelector('.logo');if(c.logo){im.src=c.logo;im.onerror=()=>im.remove()}else im.remove();
-    node.querySelector('.star').textContent=favs.has(c.tvg_id)?'★':'☆';node.querySelector('.star').onclick=e=>{e.stopPropagation();toggleFav(c.tvg_id)};
-    node.onclick=()=>play(c);el.appendChild(node);
-  }
-}
+function miniEPG(c){const e=epg[c.tvg_id]?.now;if(!e)return c.has_guide_metadata?'Guide available':'Live programming';return `${fmtTime(e.start)}  ${e.title||''}`.trim()}
+function channelCard(c){const node=$('#cardTpl').content.firstElementChild.cloneNode(true);node.querySelector('.name').textContent=c.name;node.querySelector('.meta').textContent=[c.country,c.quality,(c.languages||[]).join('/')].filter(Boolean).join(' • ');node.querySelector('.epg-mini').textContent=miniEPG(c);node.querySelector('.source-badge').textContent=c.source||'Live TV';const im=node.querySelector('.logo');if(c.logo){im.src=c.logo;im.onerror=()=>im.remove()}else im.remove();node.querySelector('.star').textContent=favs.has(c.tvg_id)?'★':'☆';node.querySelector('.star').onclick=e=>{e.stopPropagation();toggleFav(c.tvg_id)};node.onclick=()=>play(c);return node}
+function vodCard(c){const node=document.createElement('button');node.className='card vod-card';const art=document.createElement('div');art.className='poster-wrap';if(c.poster){const im=document.createElement('img');im.src=c.poster;im.alt='';im.onerror=()=>im.remove();art.appendChild(im)}else art.textContent=c.type==='service'?'💎':'🎬';const body=document.createElement('div');body.className='card-body';body.innerHTML=`<div class="name">${esc(c.name)}</div><div class="meta">${esc([c.provider,c.year,c.language].filter(Boolean).join(' • '))}</div><div class="service-badge">${c.type==='service'?'Official service':'On-demand discovery'}</div><div class="epg-mini">${esc((c.overview||'Open provider').slice(0,110))}</div>`;const open=document.createElement('div');open.className='open-arrow';open.textContent='↗';node.append(art,body,open);node.onclick=()=>window.open(c.url,'_blank','noopener');return node}
 
-function renderEPG(c){
-  const d=epg[c.tvg_id]||{};const n=d.now;const nx=d.next;
-  $('#epgNowTitle').textContent=n?.title||'Live programming — schedule unavailable';$('#epgNowTime').textContent=n?`${fmtTime(n.start)} – ${fmtTime(n.stop)}`:'No reliable programme-level guide data';
-  $('#epgNextTitle').textContent=nx?.title||'—';$('#epgNextTime').textContent=nx?`${fmtTime(nx.start)} – ${fmtTime(nx.stop)}`:'';
-}
+function quickCard(icon,title,group,subtitle){return `<button class="quick-card" data-group="${esc(group)}"><span class="quick-icon">${icon}</span><strong>${esc(title)}</strong><small>${esc(subtitle)}</small></button>`}
+function homeRail(title,group,arr){if(!arr.length)return'';return `<section class="home-section"><div class="home-head"><h3>${esc(title)}</h3><button data-group="${esc(group)}">See all →</button></div><div class="rail" id="rail-${Math.random().toString(36).slice(2)}"></div></section>`}
+function renderHome(){const hv=$('#homeView');$('#listingView').classList.add('hidden');hv.classList.remove('hidden');const favArr=channels.filter(c=>favs.has(c.tvg_id)).slice(0,12);const recArr=recent.map(id=>channelById(id)).filter(Boolean).slice(0,12);const pr=channels.filter(c=>c.groups?.includes('🇵🇷 PUERTO RICO')).slice(0,12);const sports=channels.filter(c=>c.groups?.includes('🏆 SPORTS')).slice(0,12);const movies=channels.filter(c=>c.groups?.includes('🎬 MOVIES')).slice(0,12);const freefast=channels.filter(c=>c.groups?.includes('✨ FAST & FREE')).slice(0,12);
+ const online=sources.filter(s=>s.status==='ok').length;hv.innerHTML=`<section class="hero"><div class="eyebrow">MASTER TV • LIVE • FAST • EPG</div><h1>Your TV universe,<br>organized.</h1><p>${channels.length.toLocaleString()} live channels from multiple public/free sources, grouped by country, sport and genre. Favorites and history stay on this device.</p><div class="hero-actions"><button class="primary" data-group="🇵🇷 PUERTO RICO">Watch Puerto Rico</button><button class="secondary" data-group="🏆 SPORTS">Open Sports</button><button class="secondary" data-group="✨ FAST & FREE">Explore FAST</button></div></section><div class="stat-row"><div class="stat"><b>${channels.length.toLocaleString()}</b><span>Live channels</span></div><div class="stat"><b>${online}/${sources.length||0}</b><span>Sources online</span></div><div class="stat"><b>${favs.size}</b><span>Favorites</span></div><div class="stat"><b>${stats.real_epg_channels_merged||0}</b><span>Real EPG matches</span></div></div><section class="home-section"><div class="home-head"><h3>Quick access</h3></div><div class="quick-grid">${quickCard('🇵🇷','Puerto Rico','🇵🇷 PUERTO RICO',groupCount('🇵🇷 PUERTO RICO')+' channels')}${quickCard('🏆','Sports','🏆 SPORTS',groupCount('🏆 SPORTS')+' channels')}${quickCard('🎬','Movies','🎬 MOVIES',groupCount('🎬 MOVIES')+' channels')}${quickCard('👶','Kids','👶 KIDS',groupCount('👶 KIDS')+' channels')}${quickCard('📰','News','📰 NEWS',groupCount('📰 NEWS')+' channels')}${quickCard('✨','FAST & Free','✨ FAST & FREE',groupCount('✨ FAST & FREE')+' channels')}${quickCard('💎','Premium services','💎 PREMIUM LIVE CHANNELS',groupCount('💎 PREMIUM LIVE CHANNELS')+' launchers')}${quickCard('🆕','New releases','🆕 NEW RELEASES EN',groupCount('🆕 NEW RELEASES EN')+' titles')}</div></section>`;
+ const rails=[['⭐ Favorites','⭐ FAVORITES',favArr],['🕘 Recently watched','🕘 RECENTLY WATCHED',recArr],['🇵🇷 Puerto Rico','🇵🇷 PUERTO RICO',pr],['🏆 Sports','🏆 SPORTS',sports],['🎬 Movies','🎬 MOVIES',movies],['✨ FAST & Free','✨ FAST & FREE',freefast]];
+ rails.forEach(([title,group,arr])=>{if(!arr.length)return;const sec=document.createElement('section');sec.className='home-section';sec.innerHTML=`<div class="home-head"><h3>${title}</h3><button data-group="${group}">See all →</button></div><div class="rail"></div>`;const rail=sec.querySelector('.rail');arr.forEach(c=>rail.appendChild(channelCard(c)));hv.appendChild(sec)});
+ hv.querySelectorAll('[data-group]').forEach(b=>b.onclick=()=>selectGroup(b.dataset.group))}
 
-function play(c){
-  current=c;addRecent(c.tvg_id);$('#playerCard').classList.remove('hidden');$('#nowName').textContent=c.name;
-  $('#nowMeta').textContent=[c.country,c.quality,(c.labels||[]).join(' • ')].filter(Boolean).join(' • ');const im=$('#nowLogo');im.src=c.logo||'';im.style.display=c.logo?'block':'none';syncNowFav();renderEPG(c);
-  const v=$('#video');if(hls){hls.destroy();hls=null}v.pause();v.removeAttribute('src');
-  if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=c.url;v.play().catch(()=>{})}
-  else if(window.Hls&&Hls.isSupported()){hls=new Hls({enableWorker:true,lowLatencyMode:true});hls.loadSource(c.url);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(()=>{}));}
-  else{v.src=c.url;v.play().catch(()=>{})}
-  renderGroups();window.scrollTo({top:0,behavior:'smooth'});
-}
+function renderFilters(){const el=$('#activeFilters');if(virtualMode==='🏠 HOME'){el.innerHTML='';return}const items=[['all','All sources'],...sources.filter(s=>s.status==='ok').map(s=>[s.id,s.name])];el.innerHTML=items.map(([id,n])=>`<button class="filter-chip ${sourceFilter===id?'active':''}" data-source="${esc(id)}">${esc(n)}</button>`).join('');el.querySelectorAll('button').forEach(b=>b.onclick=()=>{sourceFilter=b.dataset.source;renderLimit=PAGE_SIZE;render()})}
+function render(){renderGroups();syncBottom();if(virtualMode==='🏠 HOME'){renderHome();return}$('#homeView').classList.add('hidden');$('#listingView').classList.remove('hidden');renderFilters();const arr=filtered();$('#resultCount').textContent=`${arr.length.toLocaleString()} ${isVodGroup(virtualMode)?'items':'channels'}`;$('#viewTitle').textContent=virtualMode||activeGroup||'📺 ALL CHANNELS';$('#viewEyebrow').textContent=isVodGroup(virtualMode)?'DISCOVER':'LIVE TV';const el=$('#grid');el.innerHTML='';if(!arr.length){el.innerHTML='<div class="empty-state">No items in this section yet.</div>';return}const slice=arr.slice(0,renderLimit);slice.forEach(c=>el.appendChild(c.type==='service'||c.type==='vod'?vodCard(c):channelCard(c)));if(arr.length>slice.length){const wrap=document.createElement('div');wrap.className='load-more-wrap';const b=document.createElement('button');b.className='load-more';b.textContent=`Load ${Math.min(PAGE_SIZE,arr.length-slice.length)} more`;b.onclick=()=>{renderLimit+=PAGE_SIZE;render()};wrap.appendChild(b);el.appendChild(wrap)}}
 
-$('#search').addEventListener('input',render);$('#clearSearch').onclick=()=>{$('#search').value='';render()};$('#nowFav').onclick=()=>current&&toggleFav(current.tvg_id);
+function renderEPG(c){const d=epg[c.tvg_id]||{};const n=d.now,nx=d.next;$('#epgNowTitle').textContent=n?.title||'Live programming — schedule unavailable';$('#epgNowTime').textContent=n?`${fmtTime(n.start)} – ${fmtTime(n.stop)}`:'No reliable programme-level guide data';$('#epgNextTitle').textContent=nx?.title||'—';$('#epgNextTime').textContent=nx?`${fmtTime(nx.start)} – ${fmtTime(nx.stop)}`:''}
+function play(c){current=c;addRecent(c.tvg_id);$('#playerCard').classList.remove('hidden');$('#nowName').textContent=c.name;$('#nowSource').textContent=c.source||'LIVE TV';$('#nowMeta').textContent=[c.country,c.quality,(c.languages||[]).join('/'),(c.labels||[]).join(' • ')].filter(Boolean).join(' • ');const im=$('#nowLogo');im.src=c.logo||'';im.style.display=c.logo?'block':'none';syncNowFav();renderEPG(c);const v=$('#video'),status=$('#playerStatus');status.classList.add('hidden');if(hls){hls.destroy();hls=null}v.pause();v.removeAttribute('src');const fail=()=>{status.textContent='This stream could not start in the browser. It may be geo-blocked, temporarily offline, DRM-protected, or require provider headers.';status.classList.remove('hidden')};v.onerror=fail;if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=c.url;v.play().catch(fail)}else if(window.Hls&&Hls.isSupported()){hls=new Hls({enableWorker:true,lowLatencyMode:true});hls.loadSource(c.url);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(fail));hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal)fail()})}else{v.src=c.url;v.play().catch(fail)}renderGroups();window.scrollTo({top:0,behavior:'smooth'})}
+
+function renderSources(){const el=$('#sourceList');if(!sources.length){el.innerHTML='<div class="muted">No source status data yet.</div>';return}el.innerHTML=sources.map(s=>`<div class="source-item"><span class="source-dot ${s.status==='ok'?'':'error'}"></span><div><strong>${esc(s.name)}</strong><small>${esc(s.status==='ok'?`${s.entries||0} entries${s.epg_urls?` • ${s.epg_urls} EPG source${s.epg_urls===1?'':'s'}`:''}`:(s.error||'Unavailable'))}</small></div><b>${s.status==='ok'?'ONLINE':'ERROR'}</b></div>`).join('')}
+function syncBottom(){document.querySelectorAll('.bottom-nav button').forEach(b=>b.classList.toggle('active',b.dataset.nav===(virtualMode||activeGroup)))}
+
+$('#search').addEventListener('input',()=>{if(virtualMode==='🏠 HOME'&&$('#search').value.trim())virtualMode=null;renderLimit=PAGE_SIZE;render()});
+$('#clearSearch').onclick=()=>{$('#search').value='';renderLimit=PAGE_SIZE;render()};
+$('#nowFav').onclick=()=>current&&toggleFav(current.tvg_id);$('#openStream').onclick=()=>current&&window.open(current.url,'_blank','noopener');
+$('#homeBtn').onclick=()=>selectGroup('🏠 HOME');$('#sourceBtn').onclick=()=>{$('#sourcePanel').classList.remove('hidden');renderSources()};$('#closeSources').onclick=()=>$('#sourcePanel').classList.add('hidden');
+document.querySelectorAll('.bottom-nav button').forEach(b=>b.onclick=()=>selectGroup(b.dataset.nav));
+
 const DATA_BASE=location.pathname.includes('/static/')?'../output/':'./output/';
 Promise.all([
-  fetch(DATA_BASE+'channels.json').then(r=>r.json()),
-  fetch(DATA_BASE+'groups.json').then(r=>r.json()),
-  fetch(DATA_BASE+'group_sections.json').then(r=>r.json()),
-  fetch(DATA_BASE+'epg_index.json').then(r=>r.json()).catch(()=>({}))
-]).then(([c,g,s,e])=>{channels=c;groups=g;sections=s;epg=e;render()}).catch(err=>{$('#grid').innerHTML='<p>Run update_master.py first, then serve the project root over HTTP.</p>'});
+ fetch(DATA_BASE+'channels.json',{cache:'no-store'}).then(r=>r.json()),
+ fetch(DATA_BASE+'groups.json',{cache:'no-store'}).then(r=>r.json()),
+ fetch(DATA_BASE+'group_sections.json',{cache:'no-store'}).then(r=>r.json()),
+ fetch(DATA_BASE+'epg_index.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
+ fetch(DATA_BASE+'vod.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>([])),
+ fetch(DATA_BASE+'sources.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>([])),
+ fetch(DATA_BASE+'stats.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>({}))
+]).then(([c,g,s,e,v,src,st])=>{channels=c;groups=g;sections=s;epg=e;vod=v;sources=src;stats=st;render();renderSources()}).catch(err=>{$('#listingView').classList.remove('hidden');$('#grid').innerHTML=`<div class="empty-state">MasterTV data could not load.<br><small>${esc(err.message||String(err))}</small></div>`});
