@@ -1,0 +1,91 @@
+{
+  "project_name": "MasterTV V5 Fusion",
+  "timezone": "America/New_York",
+  "selected_countries": ["PR","US","CO","MX","DO","ES","AR","CL","PE","VE","EC","PA","CR","GT","SV","HN","UY","BR","UK","CA","FR","IT","DE"],
+  "latam_countries": ["PR","CO","MX","DO","AR","CL","PE","VE","EC","PA","CR","GT","SV","HN","NI","UY","PY","BO","BR"],
+  "country_groups": {
+    "PR": "🇵🇷 PUERTO RICO", "CO": "🇨🇴 COLOMBIA", "MX": "🇲🇽 MEXICO", "DO": "🇩🇴 DOMINICAN REPUBLIC",
+    "ES": "🇪🇸 SPAIN", "AR": "🇦🇷 ARGENTINA", "CL": "🇨🇱 CHILE", "PE": "🇵🇪 PERU", "VE": "🇻🇪 VENEZUELA",
+    "EC": "🇪🇨 ECUADOR", "PA": "🇵🇦 PANAMA", "CR": "🇨🇷 COSTA RICA", "GT": "🇬🇹 GUATEMALA", "SV": "🇸🇻 EL SALVADOR",
+    "HN": "🇭🇳 HONDURAS", "UY": "🇺🇾 URUGUAY", "BR": "🇧🇷 BRAZIL", "UK": "🇬🇧 UK", "CA": "🇨🇦 CANADA",
+    "FR": "🇫🇷 FRANCE", "IT": "🇮🇹 ITALY", "DE": "🇩🇪 GERMANY"
+  },
+  "international_limit": 4500,
+  "duplicate_into_latam": true,
+  "duplicate_into_content_groups": true,
+  "exclude_nsfw": true,
+  "exclude_blocklisted": true,
+  "prefer_hd": true,
+  "generate_fallback_epg": true,
+  "fallback_epg_hours": 72,
+  "fallback_program_title": "Live programming — schedule unavailable",
+  "recently_watched_limit": 50,
+  "default_group": "🏠 HOME",
+  "fallback_group": "🇵🇷 PUERTO RICO",
+  "initial_render_limit": 60,
+  "external_source_timeout": 35,
+  "external_source_max_bytes": 18000000,
+  "external_sources": [
+    {
+      "id": "free-tv",
+      "name": "Free-TV/IPTV",
+      "url": "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
+      "source_group": "✨ FAST & FREE",
+      "priority": 70,
+      "public_free": true
+    },
+    {
+      "id": "tdtchannels-es",
+      "name": "TDTChannels España",
+      "url": "https://www.tdtchannels.com/lists/tv.m3u",
+      "source_group": "✨ FAST & FREE",
+      "default_country": "ES",
+      "priority": 82,
+      "public_free": true
+    },
+    {
+      "id": "pluto-all",
+      "name": "Pluto TV FAST",
+      "url": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plutotv_all.m3u",
+      "source_group": "✨ FAST & FREE",
+      "priority": 78,
+      "public_free": true
+    },
+    {
+      "id": "plex-all",
+      "name": "Plex FAST",
+      "url": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plex_all.m3u",
+      "source_group": "✨ FAST & FREE",
+      "priority": 76,
+      "public_free": true
+    },
+    {
+      "id": "samsung-all",
+      "name": "Samsung TV Plus",
+      "url": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/samsungtvplus_all.m3u",
+      "source_group": "✨ FAST & FREE",
+      "priority": 77,
+      "public_free": true
+    },
+    {
+      "id": "roku-all",
+      "name": "The Roku Channel",
+      "url": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/roku_all.m3u",
+      "source_group": "✨ FAST & FREE",
+      "priority": 74,
+      "public_free": true
+    },
+    {
+      "id": "tubi-all",
+      "name": "Tubi Live TV",
+      "url": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u",
+      "source_group": "✨ FAST & FREE",
+      "default_country": "US",
+      "priority": 79,
+      "public_free": true
+    }
+  ],
+  "blocked_source_patterns": [
+    "fortv.cc", "envivoslatam.org"
+  ]
+}
