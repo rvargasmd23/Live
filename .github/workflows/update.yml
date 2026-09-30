@@ -16,9 +16,11 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
@@ -65,22 +67,25 @@ jobs:
         run: |
           mkdir -p site/output
 
-          cp static/* site/
+          cp index.html site/
+          cp app.js site/
+          cp styles.css site/
+          cp manifest.webmanifest site/
+          cp sw.js site/
 
-          cp \
-            output/channels.json \
-            output/groups.json \
-            output/group_sections.json \
-            output/epg_index.json \
-            output/epg.xml \
-            output/master.m3u \
-            output/stats.json \
-            output/sources.json \
-            output/vod.json \
-            output/vod_status.json \
-            site/output/
+          cp output/channels.json site/output/
+          cp output/groups.json site/output/
+          cp output/group_sections.json site/output/
+          cp output/epg_index.json site/output/
+          cp output/epg.xml site/output/
+          cp output/master.m3u site/output/
+          cp output/stats.json site/output/
+          cp output/sources.json site/output/
+          cp output/vod.json site/output/
+          cp output/vod_status.json site/output/
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
