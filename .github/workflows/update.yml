@@ -1,4 +1,4 @@
-name: Update MasterTV V2
+name: Update MasterTV V5.2 Easy Private Import
 
 on:
   workflow_dispatch:
@@ -13,62 +13,80 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate fresh MasterTV channels and EPG
-        run: |
-          python update_master.py --real-epg --max-epg-sources 120
+      - name: Generate live TV, FAST sources and EPG
+        env:
+          MASTERTV_AUTHORIZED_M3U_URLS: ${{ secrets.MASTERTV_AUTHORIZED_M3U_URLS }}
+          FORTV_M3U_URL: ${{ secrets.FORTV_M3U_URL }}
+          FORTV_M3U_TEXT: ${{ secrets.FORTV_M3U_TEXT }}
+          FORTV_M3U_TEXT_2: ${{ secrets.FORTV_M3U_TEXT_2 }}
+          FORTV_M3U_TEXT_3: ${{ secrets.FORTV_M3U_TEXT_3 }}
+          FORTV_M3U_TEXT_4: ${{ secrets.FORTV_M3U_TEXT_4 }}
+          FORTV_M3U_TEXT_5: ${{ secrets.FORTV_M3U_TEXT_5 }}
+          FORTV_M3U_TEXT_6: ${{ secrets.FORTV_M3U_TEXT_6 }}
+          FORTV_M3U_TEXT_7: ${{ secrets.FORTV_M3U_TEXT_7 }}
+          FORTV_M3U_TEXT_8: ${{ secrets.FORTV_M3U_TEXT_8 }}
+        run: python update_master.py --real-epg --max-epg-sources 160
+
+      - name: Generate premium-service launchers and on-demand discovery
+        env:
+          TMDB_READ_TOKEN: ${{ secrets.TMDB_READ_TOKEN }}
+        run: python build_vod.py
 
       - name: Verify generated data
         run: |
-          echo "Generated files:"
-          ls -lh output
-          echo "Channel count:"
           python - <<'PY'
           import json
-          with open("output/channels.json", encoding="utf-8") as f:
-              channels = json.load(f)
-          print(len(channels))
-          if len(channels) == 0:
-              raise SystemExit("ERROR: No channels generated")
+
+          c = json.load(open('output/channels.json', encoding='utf-8'))
+          s = json.load(open('output/sources.json', encoding='utf-8'))
+          v = json.load(open('output/vod.json', encoding='utf-8'))
+
+          print('Live channels:', len(c))
+          print('Sources:', [(x.get('name'), x.get('status'), x.get('entries')) for x in s])
+          print('VOD/service items:', len(v))
+
+          if not c:
+              raise SystemExit('No live channels generated')
           PY
 
-      - name: Prepare MasterTV website
+      - name: Prepare GitHub Pages
         run: |
           mkdir -p site/output
 
-          cp index.html site/
-          cp app.js site/
-          cp styles.css site/
-          cp manifest.webmanifest site/
-          cp sw.js site/
+          cp static/* site/
 
-          cp output/channels.json site/output/
-          cp output/groups.json site/output/
-          cp output/group_sections.json site/output/
-          cp output/epg_index.json site/output/
-          cp output/epg.xml site/output/
-          cp output/master.m3u site/output/
-          cp output/stats.json site/output/
+          cp \
+            output/channels.json \
+            output/groups.json \
+            output/group_sections.json \
+            output/epg_index.json \
+            output/epg.xml \
+            output/master.m3u \
+            output/stats.json \
+            output/sources.json \
+            output/vod.json \
+            output/vod_status.json \
+            site/output/
 
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
   deploy:
     needs: build
+
     permissions:
       pages: write
       id-token: write
@@ -80,6 +98,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy MasterTV
+      - name: Deploy MasterTV V5.2
         id: deployment
         uses: actions/deploy-pages@v4
